@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Wayfinding</title>
+<meta name="viewport" content="initial-scale=1.0">
+<meta charset="utf-8">
+<script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.0.1/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.0.1/mapbox-gl.css" rel="stylesheet" />
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+<link rel="stylesheet" type="text/css" href="./style/map.css">
+<script
+  src="https://code.jquery.com/jquery-3.1.1.min.js"
+  integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8="
+  crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+</head>
+<style>
+
+html {
+  padding:0;
+  margin:0;
+}
+
+body {
+  margin:0;
+  padding:1px;
+  font-family: sans-serif;
+}
+
+</style>
+<body>
+<div id="mapWrap">
+	<div id="map"></div>
+  <div id="addInfoBox">
+    <button id="addInfoBtn" class="ui red button">
+      Info
+    </button>
+  </div>
+  <div id="mapLoader" class="ui active inverted dimmer">
+    <div class="ui text loader"></div>
+  </div>
+	<div id="infoBox">
+		<div id="contentBox">
+      <button id="closeBtn" class="ui icon button">
+        <i class="close icon"></i>
+      </button>
+			<h2>Dynamic Wayfinding Maps</h2>
+      <p>Choose the walk time below and click the map to place/move the circle.</p>
+      <div class="ui buttons">
+        <div class="ui button walktime" data-id="160">2 min.</div>
+        <div class="ui button walktime active" data-id="400">5 min.</div>
+        <div class="ui button walktime" data-id="800">10 min.</div>
+      </div>
+      <div class="ui hidden divider"></div>
+      <p>Choose your orientation:</p>
+      <div class="ui buttons">
+        <div class="ui button orientation active" data-id="-16.2">N</div>
+        <div class="ui button orientation" data-id="164.6">S</div>
+        <div class="ui button orientation" data-id="74.2">E</div>
+        <div class="ui button orientation" data-id="-105.8">W</div>
+      </div>
+			<p class="note">By: <a href="http://www.formerspatial.com/" target="_blank">William Davis</a></p>
+      <p style="margin-top:0;" class="note">Data source: <a href="https://open.toronto.ca/" target="_blank">Toronto Open Data</a></p>
+		</div>
+  </div>
+</div>
+
+<script>
+
+let pointClean = [-79.41, 43.65];
+let distance = 400;
+let newCircle = true;
+let initLoad = true;
+
+mapboxgl.accessToken = 'pk.eyJ1Ijoid2lsbGlhbS1kYXZpcyIsImEiOiJja2tiYWtvbWcwMmtzMnBvajh3M2kxZGRuIn0.GeROaHKn2Gbvsg1e8buJEw';
+var map = new mapboxgl.Map({
+    container: 'map', // container id
+    style: 'mapbox://styles/william-davis/ckjqfp8nc5p131ao91ep4ykav', // style URL
+    center: pointClean, // starting position [lng, lat]
+    bearing: -16.2,
+    minZoom: 14,
+    zoom: 15 // starting zoom
+});
+
+map.on('load', function () {
+  
+  generateCircle(pointClean, distance);
+
+  map.on('mousemove', function (e) {
+    if (newCircle) {
+      pointClean = [e.lngLat.lng, e.lngLat.lat];
+      generateCircle(pointClean, distance);
+    }
+  });
+});
+
+map.on('click', function (e) {
+  if (newCircle) {
+    newCircle = false;
+    map.setLayoutProperty('symbols', 'visibility', 'visible');
+  } else {
+    newCircle = true;
+    map.setLayoutProperty('symbols', 'visibility', 'none');
+  }
+});
+
+function generateCircle(point, time) {
+    let center = point;
+    let radius = time;
+    let labelText = getText(time);
+    let options = {steps: 100, units: 'meters', properties: {label: labelText}};
+    let circle = turf.circle(center, radius, options);
+    let centerPoint = turf.point(center);
+
+    if (initLoad) {
+        addCircleLayer(circle, centerPoint);
+    } else {
+        updateCircleLayer(circle, centerPoint);
+    }
+}
+
+function getText(p) {
+  if (p == 160) {
+    return '2 min. walk'
+  } else if (p == 400) {
+    return '5 min. walk'
+  } else if (p == 800) {
+    return '10 min. walk'
+  }
+}
+
+function addCircleLayer(feature, center) {
+  initLoad = false;
+
+  map.loadImage(
+  './img/arrow.png',
+  function (error, image) {
+    if (error) throw error;
+    map.addImage('arrow', image);
+  });
+
+	map.addSource('circle-source', {
+		'type': 'geojson',
+		'data': feature
+  });
+  
+  map.addSource('circle-point-source', {
+		'type': 'geojson',
+		'data': center
+	});
+
+	map.addLayer({
+		'id': 'circle-outline',
+		'type': 'line',
+		'source': 'circle-source',
+		'sourceLayer': 'circle-layer',
+		'paint': {
+      'line-color': 'red',
+      'line-width': 4
+		}
+  });
+
+  map.addLayer({
+    'id': 'circle-point-icon',
+    'type': 'symbol',
+    'source': 'circle-point-source',
+    'layout': {
+      'icon-image': 'arrow',
+      'icon-size': 0.35,
+      'icon-anchor': 'top',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    }
+  });
+  
+
+  map.addLayer({  
+    'id': 'symbols',
+    'type': 'symbol',
+    'source': 'circle-source',
+    'layout': {
+      'symbol-placement': 'line',
+      'text-font': ["Open Sans Bold"],
+      'text-field': ['get', 'label'],
+      'text-size': [
+        'interpolate',
+        ['exponential', 0.5],
+        ['zoom'],
+        14, 12,
+        17, 14
+      ],
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+      'visibility': 'none',
+      "symbol-spacing": 3000,
+    },
+    'paint':{
+      'text-color': '#fff',
+      'text-halo-color': 'red',
+      'text-halo-width': 2
+    }
+  });
+};
+
+function updateCircleLayer(feature, center) {
+  map.getSource('circle-source').setData(feature);
+  map.getSource('circle-point-source').setData(center);
+}
+
+$('#closeBtn').click(function() {
+  document.getElementById('infoBox').style.display = 'none';
+  document.getElementById('addInfoBox').style.display = 'block';
+});
+
+$('#addInfoBtn').click(function() {
+  document.getElementById('infoBox').style.display = 'block';
+  document.getElementById('addInfoBox').style.display = 'none';
+});
+
+$('.walktime').click(function() {
+  $('.walktime').removeClass('active');
+  let dataId = $(this).attr("data-id");
+  $(this).addClass('active');
+  distance = dataId;
+  generateCircle(pointClean, distance);
+});
+
+$('.orientation').click(function() {
+  $('.orientation').removeClass('active');
+  let dataId = $(this).attr("data-id");
+  $(this).addClass('active');
+  map.flyTo({bearing: dataId});
+});
+
+</script>
+</body>
+</html>
